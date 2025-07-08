@@ -126,10 +126,13 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS repair_parts_usage (
                     usage_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     order_id INTEGER NOT NULL,
-                    part_id INTEGER NOT NULL,
+                    part_id INTEGER,
+                    part_name TEXT NOT NULL,
+                    part_source TEXT DEFAULT '库存配件',
                     quantity_used INTEGER NOT NULL,
                     unit_price REAL NOT NULL,
                     subtotal REAL NOT NULL,
+                    remarks TEXT,
                     FOREIGN KEY (order_id) REFERENCES repair_orders (order_id),
                     FOREIGN KEY (part_id) REFERENCES parts (part_id)
                 )

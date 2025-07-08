@@ -173,27 +173,51 @@ class OrdersWindow:
         parts_select_frame = ttk.Frame(parts_frame)
         parts_select_frame.pack(fill=tk.X, pady=(0, 10))
         
-        ttk.Label(parts_select_frame, text="选择配件:").pack(side=tk.LEFT, padx=(0, 5))
+        # 第一行：配件来源选择
+        source_frame = ttk.Frame(parts_select_frame)
+        source_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(source_frame, text="配件来源:").pack(side=tk.LEFT, padx=(0, 5))
+        self.part_source_var = tk.StringVar(value="库存配件")
+        source_combo = ttk.Combobox(source_frame, textvariable=self.part_source_var, 
+                                   values=["库存配件", "客户自带"], width=12, state="readonly")
+        source_combo.pack(side=tk.LEFT, padx=(0, 10))
+        source_combo.bind('<<ComboboxSelected>>', self.on_part_source_change)
+        
+        # 第二行：配件选择/输入
+        part_frame = ttk.Frame(parts_select_frame)
+        part_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(part_frame, text="配件名称:").pack(side=tk.LEFT, padx=(0, 5))
         self.part_var = tk.StringVar()
-        self.part_combo = ttk.Combobox(parts_select_frame, textvariable=self.part_var, width=20)
+        self.part_combo = ttk.Combobox(part_frame, textvariable=self.part_var, width=20)
         self.part_combo.pack(side=tk.LEFT, padx=(0, 10))
         
-        ttk.Label(parts_select_frame, text="数量:").pack(side=tk.LEFT, padx=(0, 5))
-        self.part_quantity_var = tk.StringVar(value="1")
-        ttk.Entry(parts_select_frame, textvariable=self.part_quantity_var, width=10).pack(side=tk.LEFT, padx=(0, 10))
+        # 客户自带配件名称输入框（初始隐藏）
+        self.custom_part_var = tk.StringVar()
+        self.custom_part_entry = ttk.Entry(part_frame, textvariable=self.custom_part_var, width=22)
         
-        ttk.Button(parts_select_frame, text="添加配件", command=self.add_part_to_order).pack(side=tk.LEFT)
+        ttk.Label(part_frame, text="数量:").pack(side=tk.LEFT, padx=(0, 5))
+        self.part_quantity_var = tk.StringVar(value="1")
+        ttk.Entry(part_frame, textvariable=self.part_quantity_var, width=8).pack(side=tk.LEFT, padx=(0, 10))
+        
+        ttk.Label(part_frame, text="单价:").pack(side=tk.LEFT, padx=(0, 5))
+        self.part_price_var = tk.StringVar(value="0.00")
+        ttk.Entry(part_frame, textvariable=self.part_price_var, width=10).pack(side=tk.LEFT, padx=(0, 10))
+        
+        ttk.Button(part_frame, text="添加配件", command=self.add_part_to_order).pack(side=tk.LEFT)
         
         # 配件列表
         parts_list_frame = ttk.Frame(parts_frame)
         parts_list_frame.pack(fill=tk.BOTH, expand=True)
         
-        columns = ('配件名称', '数量', '单价', '小计')
+        columns = ('配件名称', '来源', '数量', '单价', '小计')
         self.parts_tree = ttk.Treeview(parts_list_frame, columns=columns, show='headings', height=6)
         
+        column_widths = {'配件名称': 150, '来源': 80, '数量': 60, '单价': 80, '小计': 80}
         for col in columns:
             self.parts_tree.heading(col, text=col)
-            self.parts_tree.column(col, width=100)
+            self.parts_tree.column(col, width=column_widths.get(col, 100))
         
         scrollbar_parts = ttk.Scrollbar(parts_list_frame, orient=tk.VERTICAL, command=self.parts_tree.yview)
         self.parts_tree.configure(yscrollcommand=scrollbar_parts.set)
@@ -273,12 +297,27 @@ class OrdersWindow:
         # 这里可以打开客户管理窗口或简单的客户添加对话框
         messagebox.showinfo("提示", "请使用客户管理功能添加新客户")
     
+    def on_part_source_change(self, event):
+        """配件来源切换事件"""
+        source = self.part_source_var.get()
+        if source == "库存配件":
+            # 显示配件下拉框，隐藏自定义输入框
+            self.part_combo.pack(side=tk.LEFT, padx=(0, 10))
+            self.custom_part_entry.pack_forget()
+            self.part_var.set("")
+            # 启用配件选择，禁用单价输入（从库存获取）
+            self.part_combo.configure(state="readonly")
+        else:  # 客户自带
+            # 隐藏配件下拉框，显示自定义输入框
+            self.part_combo.pack_forget()
+            self.custom_part_entry.pack(side=tk.LEFT, padx=(0, 10))
+            self.custom_part_var.set("")
+            # 启用自定义输入
+            self.custom_part_entry.configure(state="normal")
+    
     def add_part_to_order(self):
         """添加配件到订单"""
-        part_selection = self.part_var.get()
-        if not part_selection:
-            messagebox.showerror("错误", "请选择配件")
-            return
+        source = self.part_source_var.get()
         
         try:
             quantity = int(self.part_quantity_var.get())
@@ -289,44 +328,92 @@ class OrdersWindow:
             messagebox.showerror("错误", "请输入有效的数量")
             return
         
-        # 查找选中的配件
-        selected_part = None
-        for part in self.parts_data:
-            if f"{part.part_name} (库存:{part.stock_quantity})" == part_selection:
-                selected_part = part
-                break
-        
-        if not selected_part:
-            messagebox.showerror("错误", "配件不存在")
-            return
-        
-        # 检查库存
-        if quantity > selected_part.stock_quantity:
-            messagebox.showerror("错误", f"库存不足，当前库存：{selected_part.stock_quantity}")
-            return
-        
-        # 检查是否已添加
-        for existing_part in self.selected_parts:
-            if existing_part['part_id'] == selected_part.part_id:
-                messagebox.showerror("错误", "该配件已添加，请修改数量或删除后重新添加")
+        try:
+            unit_price = float(self.part_price_var.get())
+            if unit_price < 0:
+                messagebox.showerror("错误", "单价不能为负数")
                 return
+        except ValueError:
+            messagebox.showerror("错误", "请输入有效的单价")
+            return
         
-        # 添加到选中配件列表
-        part_info = {
-            'part_id': selected_part.part_id,
-            'part_name': selected_part.part_name,
-            'quantity': quantity,
-            'unit_price': selected_part.selling_price,
-            'subtotal': quantity * selected_part.selling_price
-        }
+        if source == "库存配件":
+            part_selection = self.part_var.get()
+            if not part_selection:
+                messagebox.showerror("错误", "请选择配件")
+                return
+            
+            # 查找选中的配件
+            selected_part = None
+            for part in self.parts_data:
+                if f"{part.part_name} (库存:{part.stock_quantity})" == part_selection:
+                    selected_part = part
+                    break
+            
+            if not selected_part:
+                messagebox.showerror("错误", "配件不存在")
+                return
+            
+            # 检查库存
+            if quantity > selected_part.stock_quantity:
+                messagebox.showerror("错误", f"库存不足，当前库存：{selected_part.stock_quantity}")
+                return
+            
+            # 检查是否已添加
+            for existing_part in self.selected_parts:
+                if existing_part.get('part_id') == selected_part.part_id:
+                    messagebox.showerror("错误", "该配件已添加，请修改数量或删除后重新添加")
+                    return
+            
+            # 使用库存配件的价格
+            unit_price = selected_part.selling_price
+            self.part_price_var.set(f"{unit_price:.2f}")
+            
+            # 添加到选中配件列表
+            part_info = {
+                'part_id': selected_part.part_id,
+                'part_name': selected_part.part_name,
+                'part_source': '库存配件',
+                'quantity': quantity,
+                'unit_price': unit_price,
+                'subtotal': quantity * unit_price
+            }
+            
+        else:  # 客户自带
+            part_name = self.custom_part_var.get().strip()
+            if not part_name:
+                messagebox.showerror("错误", "请输入配件名称")
+                return
+            
+            # 检查是否已添加同名配件
+            for existing_part in self.selected_parts:
+                if (existing_part['part_name'] == part_name and 
+                    existing_part['part_source'] == '客户自带'):
+                    messagebox.showerror("错误", "该客户自带配件已添加，请修改数量或删除后重新添加")
+                    return
+            
+            # 添加到选中配件列表
+            part_info = {
+                'part_id': None,
+                'part_name': part_name,
+                'part_source': '客户自带',
+                'quantity': quantity,
+                'unit_price': unit_price,
+                'subtotal': quantity * unit_price
+            }
+        
         self.selected_parts.append(part_info)
         
         # 更新配件列表显示
         self.update_parts_display()
         
         # 清空选择
-        self.part_var.set("")
+        if source == "库存配件":
+            self.part_var.set("")
+        else:
+            self.custom_part_var.set("")
         self.part_quantity_var.set("1")
+        self.part_price_var.set("0.00")
     
     def remove_part_from_order(self, event=None):
         """从订单中移除配件"""
@@ -352,6 +439,7 @@ class OrdersWindow:
         for part in self.selected_parts:
             values = (
                 part['part_name'],
+                part['part_source'],
                 part['quantity'],
                 f"{part['unit_price']:.2f}",
                 f"{part['subtotal']:.2f}"
@@ -390,18 +478,30 @@ class OrdersWindow:
             return
         
         try:
+            # 准备配件使用数据
+            parts_usage_list = []
+            for part in self.selected_parts:
+                usage_data = {
+                    'part_id': part.get('part_id'),
+                    'part_name': part['part_name'],
+                    'part_source': part['part_source'],
+                    'quantity_used': part['quantity'],
+                    'unit_price': part['unit_price'],
+                    'remarks': ''
+                }
+                parts_usage_list.append(usage_data)
+            
             # 准备订单数据
             order_data = {
                 'customer_id': self.selected_customer.customer_id,
                 'repair_date': datetime.strptime(self.repair_date_var.get(), '%Y-%m-%d').date(),
                 'fault_description': fault_description,
                 'repair_content': self.repair_text.get('1.0', tk.END).strip(),
-                'labor_cost': labor_cost,
-                'parts_used': self.selected_parts
+                'labor_cost': labor_cost
             }
             
             # 创建订单
-            order_id = self.order_service.create_repair_order(order_data)
+            order_id = self.order_service.create_repair_order(order_data, parts_usage_list)
             messagebox.showinfo("成功", f"订单创建成功！订单号：{order_id}")
             
             # 清空表单
@@ -423,8 +523,15 @@ class OrdersWindow:
         self.fault_text.delete('1.0', tk.END)
         self.repair_text.delete('1.0', tk.END)
         self.labor_cost_var.set("0.00")
+        self.part_source_var.set("库存配件")
+        self.part_var.set("")
+        self.custom_part_var.set("")
+        self.part_quantity_var.set("1")
+        self.part_price_var.set("0.00")
         self.selected_parts = []
         self.update_parts_display()
+        # 重置配件选择界面
+        self.on_part_source_change(None)
         if hasattr(self, 'selected_customer'):
             delattr(self, 'selected_customer')
     
@@ -601,16 +708,22 @@ class OrdersWindow:
         parts_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
         if order_detail['parts_used']:
-            columns = ('配件名称', '数量', '单价', '小计')
+            columns = ('配件名称', '来源', '数量', '单价', '小计')
             parts_tree = ttk.Treeview(parts_frame, columns=columns, show='headings', height=6)
             
             for col in columns:
                 parts_tree.heading(col, text=col)
-                parts_tree.column(col, width=100)
+                if col == '配件名称':
+                    parts_tree.column(col, width=150)
+                elif col == '来源':
+                    parts_tree.column(col, width=80)
+                else:
+                    parts_tree.column(col, width=80)
             
             for part in order_detail['parts_used']:
                 values = (
                     part.part_name,
+                    part.part_source or '库存配件',
                     part.quantity,
                     f"{part.unit_price:.2f}",
                     f"{part.subtotal:.2f}"

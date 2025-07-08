@@ -122,14 +122,17 @@ class PurchaseOrder:
 class RepairPartsUsage:
     """维修配件使用记录"""
     
-    def __init__(self, usage_id=None, order_id=None, part_id=None, 
-                 quantity_used=0, unit_price=0.0, subtotal=0.0):
+    def __init__(self, usage_id=None, order_id=None, part_id=None, part_name="",
+                 part_source="库存配件", quantity_used=0, unit_price=0.0, subtotal=0.0, remarks=""):
         self.usage_id = usage_id
         self.order_id = order_id
         self.part_id = part_id
+        self.part_name = part_name
+        self.part_source = part_source  # '库存配件' 或 '客户自带'
         self.quantity_used = quantity_used
         self.unit_price = unit_price
         self.subtotal = subtotal
+        self.remarks = remarks
 
 class PurchaseDetail:
     """进货明细记录"""
@@ -176,21 +179,23 @@ class RepairOrderDAO:
                     for usage in parts_usage:
                         # 插入使用记录
                         usage_query = '''
-                            INSERT INTO repair_parts_usage (order_id, part_id, quantity_used, unit_price, subtotal)
-                            VALUES (?, ?, ?, ?, ?)
+                            INSERT INTO repair_parts_usage (order_id, part_id, part_name, part_source, 
+                                                           quantity_used, unit_price, subtotal, remarks)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         '''
                         cursor.execute(usage_query, (
-                            order_id, usage.part_id, usage.quantity_used, 
-                            usage.unit_price, usage.subtotal
+                            order_id, usage.part_id, usage.part_name, usage.part_source,
+                            usage.quantity_used, usage.unit_price, usage.subtotal, usage.remarks
                         ))
                         
-                        # 更新库存
-                        stock_query = '''
-                            UPDATE parts SET stock_quantity = stock_quantity - ?, 
-                                           update_time = CURRENT_TIMESTAMP
-                            WHERE part_id = ?
-                        '''
-                        cursor.execute(stock_query, (usage.quantity_used, usage.part_id))
+                        # 只有库存配件才需要更新库存
+                        if usage.part_source == '库存配件' and usage.part_id:
+                            stock_query = '''
+                                UPDATE parts SET stock_quantity = stock_quantity - ?, 
+                                               update_time = CURRENT_TIMESTAMP
+                                WHERE part_id = ?
+                            '''
+                            cursor.execute(stock_query, (usage.quantity_used, usage.part_id))
                 
                 conn.commit()
                 return order_id
@@ -271,7 +276,7 @@ class RepairOrderDAO:
     def get_repair_parts_usage(self, order_id):
         """获取维修订单的配件使用记录"""
         query = '''
-            SELECT rpu.*, p.part_name, p.part_code, p.unit
+            SELECT rpu.*, p.part_code, p.unit
             FROM repair_parts_usage rpu
             LEFT JOIN parts p ON rpu.part_id = p.part_id
             WHERE rpu.order_id = ?

@@ -56,22 +56,34 @@ class OrderService:
         
         if parts_usage_list:
             for usage_data in parts_usage_list:
-                # 验证配件是否存在和库存是否充足
-                part = self.part_dao.get_part_by_id(usage_data['part_id'])
-                if not part:
-                    raise ValueError(f"配件ID {usage_data['part_id']} 不存在")
+                part_source = usage_data.get('part_source', '库存配件')
+                part_name = usage_data.get('part_name', '')
+                part_id = usage_data.get('part_id')
                 
-                if part.stock_quantity < usage_data['quantity_used']:
-                    raise ValueError(f"配件 {part.part_name} 库存不足")
+                # 如果是库存配件，验证配件是否存在和库存是否充足
+                if part_source == '库存配件' and part_id:
+                    part = self.part_dao.get_part_by_id(part_id)
+                    if not part:
+                        raise ValueError(f"配件ID {part_id} 不存在")
+                    
+                    if part.stock_quantity < usage_data['quantity_used']:
+                        raise ValueError(f"配件 {part.part_name} 库存不足")
+                    
+                    part_name = part.part_name
+                elif part_source == '客户自带' and not part_name:
+                    raise ValueError("客户自带配件必须填写配件名称")
                 
                 subtotal = usage_data['quantity_used'] * usage_data['unit_price']
                 parts_cost += subtotal
                 
                 usage = RepairPartsUsage(
-                    part_id=usage_data['part_id'],
+                    part_id=part_id,
+                    part_name=part_name,
+                    part_source=part_source,
                     quantity_used=usage_data['quantity_used'],
                     unit_price=usage_data['unit_price'],
-                    subtotal=subtotal
+                    subtotal=subtotal,
+                    remarks=usage_data.get('remarks', '')
                 )
                 parts_usage.append(usage)
         
